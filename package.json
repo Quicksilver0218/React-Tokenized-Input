@@ -1,0 +1,58 @@
+{
+  "name": "@quicksilver0218/react-tokenized-input",
+  "version": "0.0.3",
+  "description": "A React input field component that tokenizes and autocompletes the input.",
+  "type": "module",
+  "main": "dist",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "rimraf dist && tsc && uglifyjs dist/index.js --compress --mangle -o dist/index.js",
+    "lint": "eslint src/** --fix",
+    "prepublishOnly": "npm run lint && npm run build"
+  },
+  "keywords": [
+    "react",
+    "react-component",
+    "mention",
+    "token",
+    "tokenized",
+    "input"
+  ],
+  "author": {
+    "name": "Quicksilver0218"
+  },
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "@eslint/js": "^9.22.0",
+    "@types/react": "^19.0.10",
+    "@types/react-dom": "^19.0.4",
+    "@typescript-eslint/eslint-plugin": "^8.26.0",
+    "@typescript-eslint/parser": "^8.26.0",
+    "eslint": "^9.22.0",
+    "eslint-plugin-react": "^7.37.4",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.19",
+    "react": "^19.0.0",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.8.2",
+    "typescript-eslint": "^8.26.0",
+    "uglify-js": "^3.19.3"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0"
+  },
+  "files": [
+    "dist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Quicksilver0218/React-Tokenized-Input.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Quicksilver0218/React-Tokenized-Input/issues"
+  },
+  "homepage": "https://github.com/Quicksilver0218/React-Tokenized-Input#readme",
+  "publishConfig": {
+    "access": "public"
+  }
+}
