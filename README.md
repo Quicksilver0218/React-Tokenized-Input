@@ -7,4 +7,5 @@ npm i @quicksilver0218/react-tokenized-input
 ```
 
 ## Examples
-- Highly customization with Material UI: [CodeSandBox](https://codesandbox.io/p/sandbox/mzhrzr)
+- Basic: [CodeSandbox](https://codesandbox.io/p/sandbox/silly-euler-z453f3)
+- Highly customization with Material UI: [CodeSandbox](https://codesandbox.io/p/sandbox/mzhrzr)
