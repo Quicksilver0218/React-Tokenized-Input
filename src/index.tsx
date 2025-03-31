@@ -1,5 +1,5 @@
-import * as React from "react";
-import { useRef, useCallback, useMemo, useState, memo, useEffect } from "react";
+import { DataType, Globals } from "csstype";
+import { useRef, useCallback, useMemo, useState, memo, useEffect, CSSProperties } from "react";
 
 export type TokenData<T = unknown> = {
   displayValue: string;
@@ -189,11 +189,11 @@ export default function TokenizedInput<SuggestionPropsType = unknown>({
     target.addEventListener("beforeinput", callback);
     if (caretPos.current !== -1) {
       const pos = caretPos.current;
-      setTimeout(() => target.setSelectionRange(pos, pos), 0);
+      setTimeout(() => target.setSelectionRange(pos, pos));
       caretPos.current = -1;
     }
     return () => target.removeEventListener("beforeinput", callback);
-  }, [ref.current, tokens, setTokens, data, missingDataDisplayValue, lists, caseSensitive, setSuggestions, setHoveredSuggestion]);
+  }, [tokens, setTokens, data, missingDataDisplayValue, lists, caseSensitive, setSuggestions, setHoveredSuggestion, insertTokenPos]);
 
   const applySuggestion = useCallback((suggestion: Suggestion) => {
     const { tokenIndex, caretPos: cp } = insertTokenPos;
@@ -276,7 +276,12 @@ export default function TokenizedInput<SuggestionPropsType = unknown>({
   }, [onBlur, setSuggestions]);
 
   const [caretSpan, setCaretSpan] = useState<HTMLSpanElement | null>(null);
-  const caretRect = useMemo(() => caretSpan?.getBoundingClientRect() || { top: 0, height: 0, left: 0 }, [caretSpan]);
+  const suggestionListContainerRef = useRef<HTMLDivElement>(null);
+  if (suggestionListContainerRef.current && caretSpan) {
+    const caretRect = caretSpan.getBoundingClientRect();
+    suggestionListContainerRef.current.style.left = `${caretRect.left}px`;
+    suggestionListContainerRef.current.style.top = `${caretRect.bottom}px`;
+  }
 
   const {
     borderWidth,
@@ -297,11 +302,9 @@ export default function TokenizedInput<SuggestionPropsType = unknown>({
     textTransform,
     whiteSpace,
     wordSpacing
-  } = useMemo(
-    () => ref.current && getComputedStyle(ref.current), [ref.current]
-  ) as React.CSSProperties || {};
+  } = (ref.current ? getComputedStyle(ref.current) : {}) as CSSProperties;
 
-  const displayColor = useMemo(() => displayRef.current && getComputedStyle(displayRef.current).color || undefined, [displayRef.current]);
+  const displayColor = displayRef.current ? getComputedStyle(displayRef.current).color as Globals | DataType.Color | "auto" : undefined;
 
   const { position, left, top, right, bottom, inset, display, width, height, color, ...otherStyle } = useMemo(() => style || {}, [style]);
 
@@ -444,7 +447,7 @@ export default function TokenizedInput<SuggestionPropsType = unknown>({
           {needAppendSpace && <>&nbsp;</>}
         </div>
         {suggestions.length !== 0 &&
-          <div style={{ position: "fixed", top: caretRect.top + caretRect.height, left: caretRect.left, zIndex: 1 }}>
+          <div ref={suggestionListContainerRef} style={{ position: "fixed", zIndex: 1 }}>
             <SuggestionList ref={suggestionListRef}>
               {suggestions.map((suggestion, i) => {
                 const token = data.get(suggestion.key)!;
