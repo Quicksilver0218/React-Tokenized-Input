@@ -1,25 +1,52 @@
 import { DataType, Globals } from "csstype";
-import { useRef, useCallback, useMemo, useState, memo, useEffect, CSSProperties } from "react";
+import {
+  useRef,
+  useCallback,
+  useMemo,
+  useState,
+  memo,
+  useEffect,
+  CSSProperties,
+  ComponentType,
+  Dispatch,
+  ElementType,
+  FocusEvent,
+  FocusEventHandler,
+  InputHTMLAttributes,
+  KeyboardEvent,
+  KeyboardEventHandler,
+  MouseEvent,
+  MouseEventHandler,
+  PropsWithChildren,
+  Ref,
+  RefAttributes,
+  RefObject,
+  SetStateAction,
+  TextareaHTMLAttributes,
+  UIEventHandler
+} from "react";
+
+export interface TokenWithKey { key: string }
+
+export type Token = string | TokenWithKey;
 
 export type TokenData<T = unknown> = {
-  displayValue: string;
-  style?: React.CSSProperties;
+  displayText: string;
+  style?: CSSProperties;
   suggestionProps?: T;
-}
-
-export type TokenKey = { key: string };
+};
 
 export type SuggestionComponentProps<T> = {
   tokenKey: string;
-  displayValue: string;
+  displayText: string;
   suggestionProps?: T;
   hover: boolean;
   onMouseEnter: () => void;
   onMouseDown: () => void;
   onSelect: () => void;
-}
+};
 
-function SuggestionComponent<T>({ displayValue, hover, onMouseEnter, onMouseDown, onSelect }: SuggestionComponentProps<T>) {
+function SuggestionComponent<T>({ displayText, hover, onMouseEnter, onMouseDown, onSelect }: SuggestionComponentProps<T>) {
   return (
     <button
       onClick={onSelect}
@@ -33,14 +60,14 @@ function SuggestionComponent<T>({ displayValue, hover, onMouseEnter, onMouseDown
         color: "white"
       }}
     >
-      {displayValue}
+      {displayText}
     </button>
   );
 }
 
 const SuggestionListComponent = memo(
-  ({ ref, children }: React.PropsWithChildren<React.RefAttributes<Element>>) =>
-    <div ref={ref as React.Ref<HTMLDivElement>} style={{
+  ({ ref, children }: PropsWithChildren<RefAttributes<Element>>) =>
+    <div ref={ref as Ref<HTMLDivElement>} style={{
       display: "flex",
       flexDirection: "column",
       width: "min-content",
@@ -53,7 +80,7 @@ const SuggestionListComponent = memo(
 
 const defaultTrigger = /^@([^@]*)$/;
 
-type Suggestion = TokenKey & { startPos: number };
+type Suggestion = TokenWithKey & { startPos: number };
 
 function scrollToChild(parent: Element, child: HTMLElement) {
   if (parent.scrollTop < child.offsetTop + child.offsetHeight - parent.clientHeight)
@@ -62,21 +89,23 @@ function scrollToChild(parent: Element, child: HTMLElement) {
     parent.scrollTop = child.offsetTop;
 }
 
-export type TokenizedInputProps<T = unknown> = (React.TextareaHTMLAttributes<HTMLTextAreaElement> | React.InputHTMLAttributes<HTMLInputElement>) & {
-  tokens: (string | TokenKey)[];
-  setTokens: React.Dispatch<React.SetStateAction<(string | TokenKey)[]>>;
-  data: Map<string, TokenData<T>>;
+export type TokenizedInputProps<T = unknown> = (TextareaHTMLAttributes<HTMLTextAreaElement> | InputHTMLAttributes<HTMLInputElement>) & {
+  tokens: Token[];
+  setTokens: Dispatch<SetStateAction<Token[]>>;
+  data: { [key: string]: TokenData<T> };
   lists: {
     trigger?: RegExp;
     items: string[];
   }[];
-  suggestionListComponent?: React.ElementType<React.PropsWithChildren<React.RefAttributes<Element>>>;
-  suggestionComponent?: React.ComponentType<SuggestionComponentProps<T>>;
+  suggestionListComponent?: ElementType<PropsWithChildren<RefAttributes<Element>>>;
+  suggestionComponent?: ComponentType<SuggestionComponentProps<T>>;
   multiline?: boolean;
   caseSensitive?: boolean;
-  missingDataDisplayValue?: string;
-  missingDataStyle?: React.CSSProperties;
+  missingDataText?: string;
+  missingDataStyle?: CSSProperties;
 };
+
+type PasteData = { tokens: Token[], length: number };
 
 export default function TokenizedInput<SuggestionPropsType = unknown>({
   tokens,
@@ -87,7 +116,7 @@ export default function TokenizedInput<SuggestionPropsType = unknown>({
   suggestionComponent: Suggestion = SuggestionComponent,
   multiline,
   caseSensitive,
-  missingDataDisplayValue = "{missing}",
+  missingDataText = "{missing}",
   missingDataStyle = { color: "red", textDecoration: "red wavy underline" },
   style,
   onKeyDown,
@@ -111,8 +140,76 @@ export default function TokenizedInput<SuggestionPropsType = unknown>({
     if (!ref.current)
       return;
     const target = ref.current!;
-    const callback = (event: Event) => {
-      const e = event as unknown as InputEvent;
+    const updateTokensAndSuggestions = (
+      head: string,
+      insertTokens: Token[],
+      length: number,
+      tail: string,
+      start: number,
+      i: number,
+      j: number
+    ) => {
+      let beforeCaretText;
+      const lastToken = insertTokens[insertTokens.length - 1];
+      if (typeof lastToken === "string") {
+        beforeCaretText = lastToken;
+        insertTokens[insertTokens.length - 1] += tail;
+        if (insertTokens.length === 1)
+          beforeCaretText = head + beforeCaretText;
+      } else {
+        if (tail)
+          insertTokens.push(tail);
+        beforeCaretText = "";
+      }
+      if (typeof insertTokens[0] === "string")
+        insertTokens[0] = head + insertTokens[0];
+      else if (head)
+        insertTokens.unshift(head);
+      const newTokens = tokens.toSpliced(i, j - i, ...insertTokens);
+      if (typeof lastToken === "string" && typeof newTokens[i + insertTokens.length] === "string") {
+        (newTokens[i + insertTokens.length - 1] as string) += newTokens[i + insertTokens.length];
+        newTokens.splice(i + insertTokens.length, 1);
+      }
+      if (typeof newTokens[i] === "string" && typeof newTokens[i - 1] === "string") {
+        if (insertTokens.length === 1)
+          beforeCaretText = newTokens[i - 1] + beforeCaretText;
+        (newTokens[i - 1] as string) += newTokens[i];
+        newTokens.splice(i, 1);
+        i--;
+      }
+      insertTokenPos.tokenIndex = i + insertTokens.length - 1;
+      if (!newTokens[i]) {
+        newTokens.splice(i, 1);
+        insertTokenPos.tokenIndex--;
+      }
+      setTokens(newTokens);
+
+      const suggestions = [];
+      for (j = 0; j < beforeCaretText.length; j++)
+        for (const list of lists) {
+          const trigger = list.trigger ?? defaultTrigger;
+          const match = beforeCaretText.substring(j).match(trigger);
+          if (match)
+            for (const key of list.items) {
+              const value = data[key].displayText;
+              if (caseSensitive) {
+                if (value.startsWith(match[1]))
+                  suggestions.push({ key, startPos: j });
+              } else if (value.toLowerCase().startsWith(match[1].toLowerCase()))
+                suggestions.push({ key, startPos: j });
+            }
+        }
+      setSuggestions(suggestions);
+      setHoveredSuggestion(0);
+      mouseDownOnSuggestion.current = false;
+
+      caretPos.current = start + length;
+      insertTokenPos.caretPos = beforeCaretText.length;
+    };
+    const beforeInputCallback = (event: Event) => {
+      const e = event as InputEvent;
+      if (e.inputType === "deleteByDrag" || e.inputType === "insertFromDrop")
+        return; // I have no idea to get the insertion position
       let start = target.selectionStart!;
       let end = target.selectionEnd!;
       let text;
@@ -132,7 +229,7 @@ export default function TokenizedInput<SuggestionPropsType = unknown>({
         if (typeof token === "string")
           length = token.length;
         else
-        length = (data.get(token.key)?.displayValue || missingDataDisplayValue).length;
+          length = (data[token.key]?.displayText ?? missingDataText).length;
         if (i === -1 && total + length > start) {
           i = j;
           head = target.value.substring(total, start);
@@ -145,55 +242,110 @@ export default function TokenizedInput<SuggestionPropsType = unknown>({
       }
       if (j === tokens.length)
         tail = target.value.substring(end);
-
-      let beforeCaretText = head + text;
       if (i === -1)
         i = tokens.length;
-      const newTokens = tokens.toSpliced(i, j - i, head + text + tail);
-      if (typeof newTokens[i + 1] === "string") {
-        (newTokens[i] as string) += newTokens[i + 1];
-        newTokens.splice(i + 1, 1);
-      }
-      if (typeof newTokens[i - 1] === "string") {
-        beforeCaretText = newTokens[--i] + beforeCaretText;
-        (newTokens[i] as string) += newTokens[i + 1];
-        newTokens.splice(i + 1, 1);
-      }
-      if (!newTokens[i])
-        newTokens.splice(i, 1);
-      setTokens(newTokens);
-
-      const suggestions = [];
-      for (j = 0; j < beforeCaretText.length; j++)
-        for (const list of lists) {
-          const trigger = list.trigger || defaultTrigger;
-          const match = beforeCaretText.substring(j).match(trigger);
-          if (match)
-            for (const key of list.items) {
-              const value = data.get(key)!.displayValue;
-              if (caseSensitive) {
-                if (value.startsWith(match[1]))
-                  suggestions.push({ key, startPos: j });
-              } else if (value.toLowerCase().startsWith(match[1].toLowerCase()))
-                suggestions.push({ key, startPos: j });
-            }
-        }
-      setSuggestions(suggestions);
-      setHoveredSuggestion(0);
-      mouseDownOnSuggestion.current = false;
-
-      caretPos.current = start + text.length;
-      insertTokenPos.tokenIndex = i;
-      insertTokenPos.caretPos = beforeCaretText.length;
+      updateTokensAndSuggestions(head, [text], text.length, tail, start, i, j);
     };
-    target.addEventListener("beforeinput", callback);
+    const copyCallback = (event: Event) => {
+      event.preventDefault();
+      const start = target.selectionStart!;
+      const end = target.selectionEnd!;
+      if (start === end)
+        return;
+      const result = [];
+      let length = 0;
+      let total = 0;
+      for (const token of tokens) {
+        let text;
+        if (typeof token === "string")
+          text = token;
+        else
+          text = data[token.key]?.displayText ?? missingDataText;
+        const tokenTextLength = text.length;
+        if (total < start) {
+          if (total + tokenTextLength > start) {
+            text = text.substring(start - total, Math.min(tokenTextLength, end - total));
+            result.push(text);
+            length += text.length;
+          }
+        } else if (total < end) {
+          if (total + tokenTextLength <= end) {
+            if (typeof token === "string" && typeof result[result.length - 1] === "string")
+              result[result.length - 1] += token;
+            else
+              result.push(token);
+            length += text.length;
+          } else {
+            text = text.substring(0, end - total);
+            if (typeof result[result.length - 1] === "string")
+              result[result.length - 1] += text;
+            else
+              result.push(text);
+            length += text.length;
+          }
+        } else
+          break;
+        total += tokenTextLength;
+      }
+      (event as ClipboardEvent).clipboardData!.setData("application/json", JSON.stringify({ tokens: result, length } as PasteData));
+    };
+    const cutCallback = (event: Event) => {
+      copyCallback(event);
+      beforeInputCallback({ data: "" } as InputEvent);
+    };
+    const pasteCallback = (event: Event) => {
+      const pasteDataStr = (event as ClipboardEvent).clipboardData!.getData("application/json");
+      if (!pasteDataStr)
+        return;
+      let pasteData: PasteData;
+      try {
+        pasteData = JSON.parse(pasteDataStr);
+        if (!pasteData.tokens || !pasteData.length)
+          return;
+        event.preventDefault();
+        const start = target.selectionStart!;
+        const end = target.selectionEnd!;
+        let total = 0, i = -1, j, head = "", tail = "";
+        for (j = 0; j < tokens.length; j++) {
+          const token = tokens[j];
+          let length;
+          if (typeof token === "string")
+            length = token.length;
+          else
+            length = (data[token.key]?.displayText ?? missingDataText).length;
+          if (i === -1 && total + length > start) {
+            i = j;
+            head = target.value.substring(total, start);
+          }
+          if (total >= end) {
+            tail = target.value.substring(end, total);
+            break;
+          }
+          total += length;
+        }
+        if (j === tokens.length)
+          tail = target.value.substring(end);
+        if (i === -1)
+          i = tokens.length;
+        updateTokensAndSuggestions(head, pasteData.tokens, pasteData.length, tail, start, i, j);
+      } catch {}
+    };
+    target.addEventListener("beforeinput", beforeInputCallback);
+    target.addEventListener("copy", copyCallback);
+    target.addEventListener("cut", cutCallback);
+    target.addEventListener("paste", pasteCallback);
     if (caretPos.current !== -1) {
       const pos = caretPos.current;
       setTimeout(() => target.setSelectionRange(pos, pos));
       caretPos.current = -1;
     }
-    return () => target.removeEventListener("beforeinput", callback);
-  }, [tokens, setTokens, data, missingDataDisplayValue, lists, caseSensitive, setSuggestions, setHoveredSuggestion, insertTokenPos]);
+    return () => {
+      target.removeEventListener("beforeinput", beforeInputCallback);
+      target.removeEventListener("copy", copyCallback);
+      target.removeEventListener("cut", cutCallback);
+      target.removeEventListener("paste", pasteCallback);
+    };
+  }, [tokens, setTokens, data, missingDataText, lists, caseSensitive, setSuggestions, setHoveredSuggestion, insertTokenPos]);
 
   const applySuggestion = useCallback((suggestion: Suggestion) => {
     const { tokenIndex, caretPos: cp } = insertTokenPos;
@@ -209,17 +361,17 @@ export default function TokenizedInput<SuggestionPropsType = unknown>({
       return newTokens;
     });
     ref.current!.focus();
-    const displayValue = data.get(suggestion.key)?.displayValue || missingDataDisplayValue;
-    caretPos.current = ref.current!.selectionStart! - cp + suggestion.startPos + displayValue.length;
+    const displayText = data[suggestion.key]?.displayText || missingDataText;
+    caretPos.current = ref.current!.selectionStart! - cp + suggestion.startPos + displayText.length;
     setSuggestions([]);
     mouseDownOnSuggestion.current = false;
-  }, [setTokens, insertTokenPos, data, missingDataDisplayValue]);
+  }, [setTokens, insertTokenPos, data, missingDataText]);
 
   const displayRef = useRef<HTMLDivElement>(null);
   const suggestionListRef = useRef<Element>(null);
 
-  const handleKeyDown = useCallback((event: React.KeyboardEvent<HTMLTextAreaElement> | React.KeyboardEvent<HTMLInputElement>) => {
-    (onKeyDown as React.KeyboardEventHandler)?.(event);
+  const handleKeyDown = useCallback((event: KeyboardEvent<HTMLTextAreaElement> | KeyboardEvent<HTMLInputElement>) => {
+    (onKeyDown as KeyboardEventHandler)?.(event);
     if (suggestions.length === 0)
       return;
     switch (event.key) {
@@ -257,20 +409,20 @@ export default function TokenizedInput<SuggestionPropsType = unknown>({
   }, [onKeyDown, suggestions, hoveredSuggestion, setHoveredSuggestion, setSuggestions, applySuggestion]);
 
   const handleScroll = useCallback((event: React.UIEvent<HTMLTextAreaElement, UIEvent> | React.UIEvent<HTMLInputElement, UIEvent>) => {
-    (onScroll as React.UIEventHandler)?.(event);
+    (onScroll as UIEventHandler)?.(event);
     displayRef.current!.scrollLeft = event.currentTarget.scrollLeft;
     displayRef.current!.scrollTop = event.currentTarget.scrollTop;
   }, [onScroll]);
 
-  const handleClick = useCallback((event: React.MouseEvent<HTMLTextAreaElement> | React.MouseEvent<HTMLInputElement>) => {
-    (onClick as React.MouseEventHandler)?.(event);
+  const handleClick = useCallback((event: MouseEvent<HTMLTextAreaElement> | MouseEvent<HTMLInputElement>) => {
+    (onClick as MouseEventHandler)?.(event);
     setSuggestions([]);
     mouseDownOnSuggestion.current = false;
   }, [onClick, setSuggestions]);
 
-  const handleBlur = useCallback((event: React.FocusEvent<HTMLTextAreaElement> | React.FocusEvent<HTMLInputElement>) => {
+  const handleBlur = useCallback((event: FocusEvent<HTMLTextAreaElement> | FocusEvent<HTMLInputElement>) => {
     if (!mouseDownOnSuggestion.current) {
-      (onBlur as React.FocusEventHandler)?.(event);
+      (onBlur as FocusEventHandler)?.(event);
       setSuggestions([]);
     }
   }, [onBlur, setSuggestions]);
@@ -329,13 +481,13 @@ export default function TokenizedInput<SuggestionPropsType = unknown>({
     if (typeof lastToken === "string")
       text = lastToken;
     else
-      text = data.get(lastToken.key)?.displayValue || missingDataDisplayValue;
+      text = data[lastToken.key]?.displayText || missingDataText;
     return /\s$/.test(text);
-  }, [tokens, data, missingDataDisplayValue]);
+  }, [tokens, data, missingDataText]);
 
   const value = useMemo(
-    () => tokens.map(token => typeof token === "string" ? token : data.get(token.key)?.displayValue || missingDataDisplayValue).join(""),
-    [tokens, data, missingDataDisplayValue]
+    () => tokens.map(token => typeof token === "string" ? token : data[token.key]?.displayText || missingDataText).join(""),
+    [tokens, data, missingDataText]
   );
 
   return (
@@ -343,8 +495,8 @@ export default function TokenizedInput<SuggestionPropsType = unknown>({
       <div style={{ position: "relative" }}>
         {multiline ?
           <textarea
-            {...props as React.TextareaHTMLAttributes<HTMLTextAreaElement>}
-            ref={ref as React.RefObject<HTMLTextAreaElement>}
+            {...props as TextareaHTMLAttributes<HTMLTextAreaElement>}
+            ref={ref as RefObject<HTMLTextAreaElement>}
             value={value}
             onKeyDown={handleKeyDown}
             onScroll={handleScroll}
@@ -367,8 +519,8 @@ export default function TokenizedInput<SuggestionPropsType = unknown>({
             }}
           /> :
           <input
-            {...props as React.InputHTMLAttributes<HTMLInputElement>}
-            ref={ref as React.RefObject<HTMLInputElement>}
+            {...props as InputHTMLAttributes<HTMLInputElement>}
+            ref={ref as RefObject<HTMLInputElement>}
             value={value}
             onKeyDown={handleKeyDown}
             onScroll={handleScroll}
@@ -439,10 +591,10 @@ export default function TokenizedInput<SuggestionPropsType = unknown>({
                 );
               return <span key={i}>{token}</span>;
             }
-            const t = data.get(token.key);
+            const t = data[token.key];
             if (t)
-              return <span key={i} style={t.style}>{t.displayValue}</span>;
-            return <span key={i} style={missingDataStyle}>{missingDataDisplayValue}</span>;
+              return <span key={i} style={t.style}>{t.displayText}</span>;
+            return <span key={i} style={missingDataStyle}>{missingDataText}</span>;
           })}
           {needAppendSpace && <>&nbsp;</>}
         </div>
@@ -450,12 +602,12 @@ export default function TokenizedInput<SuggestionPropsType = unknown>({
           <div ref={suggestionListContainerRef} style={{ position: "fixed", zIndex: 1 }}>
             <SuggestionList ref={suggestionListRef}>
               {suggestions.map((suggestion, i) => {
-                const token = data.get(suggestion.key)!;
+                const token = data[suggestion.key];
                 return (
                   <Suggestion
                     key={suggestion.key}
                     tokenKey={suggestion.key}
-                    displayValue={token.displayValue}
+                    displayText={token.displayText}
                     suggestionProps={token.suggestionProps}
                     hover={hoveredSuggestion === i}
                     onMouseEnter={() => setHoveredSuggestion(i)}
