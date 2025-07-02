@@ -470,6 +470,7 @@ export default function TokenizedInput<SuggestionPropsType = unknown>({
         }
       });
       ro.observe(ref.current!);
+      return () => ro.disconnect();
     }
   }, [borderWidth]);
 
