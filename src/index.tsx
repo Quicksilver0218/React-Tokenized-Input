@@ -185,20 +185,26 @@ export default function TokenizedInput<SuggestionPropsType = unknown>({
       setTokens(newTokens);
 
       const suggestions = [];
-      for (j = 0; j < beforeCaretText.length; j++)
-        for (const list of lists) {
-          const trigger = list.trigger ?? defaultTrigger;
-          const match = beforeCaretText.substring(j).match(trigger);
-          if (match)
-            for (const key of list.items) {
+      for (const list of lists) {
+        const trigger = list.trigger ?? defaultTrigger;
+        const matches = [];
+        for (j = 0; j < beforeCaretText.length; j++)
+          matches.push(beforeCaretText.substring(j).match(trigger));
+        for (const key of list.items)
+          for (j = 0; j < beforeCaretText.length; j++)
+            if (matches[j]) {
               const value = data[key].displayText;
               if (caseSensitive) {
-                if (value.startsWith(match[1]))
+                if (value.startsWith(matches[j]![1])) {
                   suggestions.push({ key, startPos: j });
-              } else if (value.toLowerCase().startsWith(match[1].toLowerCase()))
+                  break;
+                }
+              } else if (value.toLowerCase().startsWith(matches[j]![1].toLowerCase())) {
                 suggestions.push({ key, startPos: j });
+                break;
+              }
             }
-        }
+      }
       setSuggestions(suggestions);
       setHoveredSuggestion(0);
       mouseDownOnSuggestion.current = false;
