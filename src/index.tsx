@@ -362,7 +362,7 @@ export default function TokenizedInput<SuggestionPropsType = unknown>({
       if (!newTokens[tokenIndex])
         newTokens.splice(tokenIndex, 1);
       newTokens.splice(tokenIndex, 0, { key: suggestion.key });
-      if (suggestion.startPos !== 0)
+      if (suggestion.startPos)
         newTokens.splice(tokenIndex, 0, text.substring(0, suggestion.startPos));
       return newTokens;
     });
@@ -378,12 +378,12 @@ export default function TokenizedInput<SuggestionPropsType = unknown>({
 
   const handleKeyDown = useCallback((event: KeyboardEvent<HTMLTextAreaElement> | KeyboardEvent<HTMLInputElement>) => {
     (onKeyDown as KeyboardEventHandler)?.(event);
-    if (suggestions.length === 0)
+    if (!suggestions.length)
       return;
     switch (event.key) {
       case "ArrowUp":
         setHoveredSuggestion(hoveredSuggestion => {
-          const index = hoveredSuggestion === 0 ? suggestions.length - 1 : hoveredSuggestion - 1;
+          const index = hoveredSuggestion ? hoveredSuggestion - 1 : suggestions.length - 1;
           scrollToChild(suggestionListRef.current!, suggestionListRef.current!.children[index] as HTMLElement);
           return index;
         });
@@ -481,7 +481,7 @@ export default function TokenizedInput<SuggestionPropsType = unknown>({
   }, [borderWidth]);
 
   const needAppendSpace = useMemo(() => {
-    if (tokens.length === 0)
+    if (!tokens.length)
       return false;
     const lastToken = tokens[tokens.length - 1];
     let text;
