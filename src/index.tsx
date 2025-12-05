@@ -435,11 +435,30 @@ export default function TokenizedInput<SuggestionPropsType = unknown>({
 
   const [caretSpan, setCaretSpan] = useState<HTMLSpanElement | null>(null);
   const suggestionListContainerRef = useRef<HTMLDivElement>(null);
-  if (suggestionListContainerRef.current && caretSpan) {
-    const caretRect = caretSpan.getBoundingClientRect();
-    suggestionListContainerRef.current.style.left = `${caretRect.left}px`;
-    suggestionListContainerRef.current.style.top = `${caretRect.bottom}px`;
-  }
+  const callback = useCallback(() => {
+    if (suggestionListContainerRef.current && caretSpan) {
+      const caretRect = caretSpan.getBoundingClientRect();
+      const rect = suggestionListContainerRef.current.getBoundingClientRect();
+      if (caretRect.left + rect.width <= window.innerWidth)
+        suggestionListContainerRef.current.style.left = `${caretRect.left}px`;
+      else
+        suggestionListContainerRef.current.style.left = `${caretRect.right - rect.width}px`;
+      if (caretRect.top + rect.height <= window.innerHeight)
+        suggestionListContainerRef.current.style.top = `${caretRect.bottom}px`;
+      else
+        suggestionListContainerRef.current.style.top = `${caretRect.top - rect.height}px`;
+    }
+  }, [caretSpan]);
+  callback();
+
+  useEffect(() => {
+    window.addEventListener("resize", callback);
+    window.addEventListener("scroll", callback);
+    return () => {
+      window.removeEventListener("resize", callback);
+      window.removeEventListener("scroll", callback);
+    };
+  }, [callback]);
 
   const {
     borderWidth,
@@ -447,6 +466,7 @@ export default function TokenizedInput<SuggestionPropsType = unknown>({
     fontFamily,
     fontSize,
     fontStretch,
+    fontWidth,
     fontStyle,
     fontVariant,
     fontWeight,
@@ -467,7 +487,7 @@ export default function TokenizedInput<SuggestionPropsType = unknown>({
   const { position, left, top, right, bottom, inset, display, width, height, color, ...otherStyle } = useMemo(() => style || {}, [style]);
 
   useEffect(() => {
-    if (ref.current && displayRef.current) {
+    if (ref.current) {
       const ro = new ResizeObserver(() => {
         const style = displayRef.current?.style;
         if (style) {
@@ -559,6 +579,7 @@ export default function TokenizedInput<SuggestionPropsType = unknown>({
             fontFamily,
             fontSize,
             fontStretch,
+            fontWidth,
             fontStyle,
             fontVariant,
             fontWeight,
