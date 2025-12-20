@@ -6,6 +6,7 @@ import {
   useState,
   memo,
   useEffect,
+  ClipboardEvent,
   CSSProperties,
   ComponentType,
   Dispatch,
@@ -20,10 +21,11 @@ import {
   PropsWithChildren,
   Ref,
   RefAttributes,
-  RefObject,
   SetStateAction,
   TextareaHTMLAttributes,
-  UIEventHandler
+  UIEventHandler,
+  ClipboardEventHandler,
+  ChangeEvent
 } from "react";
 
 export interface TokenWithKey { key: string }
@@ -119,115 +121,213 @@ export default function TokenizedInput<SuggestionPropsType = unknown>({
   missingDataText = "{missing}",
   missingDataStyle = { color: "red", textDecoration: "red wavy underline" },
   style,
+  onCopy,
+  onCut,
+  onPaste,
   onKeyDown,
   onScroll,
   onClick,
   onBlur,
+  onChange,
   ...props
 }: TokenizedInputProps<SuggestionPropsType>) {
   const ref = useRef<HTMLTextAreaElement | HTMLInputElement>(null);
 
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const caretPos = useRef(-1);
-  const [insertTokenPos] = useState({
-    tokenIndex: -1,
-    caretPos: -1
-  });
+  const insertTokenPos = useRef({ tokenIndex: -1, caretPos: -1 });
   const [hoveredSuggestion, setHoveredSuggestion] = useState(0);
   const mouseDownOnSuggestion = useRef(false);
 
-  useEffect(() => {
-    if (!ref.current)
-      return;
-    const target = ref.current!;
-    const updateTokensAndSuggestions = (
-      head: string,
-      insertTokens: Token[],
-      length: number,
-      tail: string,
-      start: number,
-      i: number,
-      j: number
-    ) => {
-      let beforeCaretText;
-      const lastToken = insertTokens[insertTokens.length - 1];
-      if (typeof lastToken === "string") {
-        beforeCaretText = lastToken;
-        insertTokens[insertTokens.length - 1] += tail;
-        if (insertTokens.length === 1)
-          beforeCaretText = head + beforeCaretText;
-      } else {
-        if (tail)
-          insertTokens.push(tail);
-        beforeCaretText = "";
-      }
-      if (typeof insertTokens[0] === "string")
-        insertTokens[0] = head + insertTokens[0];
-      else if (head)
-        insertTokens.unshift(head);
-      const newTokens = tokens.toSpliced(i, j - i, ...insertTokens);
-      if (typeof lastToken === "string" && typeof newTokens[i + insertTokens.length] === "string") {
-        (newTokens[i + insertTokens.length - 1] as string) += newTokens[i + insertTokens.length];
-        newTokens.splice(i + insertTokens.length, 1);
-      }
-      if (typeof newTokens[i] === "string" && typeof newTokens[i - 1] === "string") {
-        if (insertTokens.length === 1)
-          beforeCaretText = newTokens[i - 1] + beforeCaretText;
-        (newTokens[i - 1] as string) += newTokens[i];
-        newTokens.splice(i, 1);
-        i--;
-      }
-      insertTokenPos.tokenIndex = i + insertTokens.length - 1;
-      if (!newTokens[i]) {
-        newTokens.splice(i, 1);
-        insertTokenPos.tokenIndex--;
-      }
-      setTokens(newTokens);
+  const updateTokensAndSuggestions = useCallback((
+    head: string,
+    insertTokens: Token[],
+    length: number,
+    tail: string,
+    start: number,
+    i: number,
+    j: number
+  ) => {
+    let beforeCaretText;
+    const lastToken = insertTokens[insertTokens.length - 1];
+    if (typeof lastToken === "string") {
+      beforeCaretText = lastToken;
+      insertTokens[insertTokens.length - 1] += tail;
+      if (insertTokens.length === 1)
+        beforeCaretText = head + beforeCaretText;
+    } else {
+      if (tail)
+        insertTokens.push(tail);
+      beforeCaretText = "";
+    }
+    if (typeof insertTokens[0] === "string")
+      insertTokens[0] = head + insertTokens[0];
+    else if (head)
+      insertTokens.unshift(head);
+    const newTokens = tokens.toSpliced(i, j - i, ...insertTokens);
+    if (typeof lastToken === "string" && typeof newTokens[i + insertTokens.length] === "string") {
+      (newTokens[i + insertTokens.length - 1] as string) += newTokens[i + insertTokens.length];
+      newTokens.splice(i + insertTokens.length, 1);
+    }
+    if (typeof newTokens[i] === "string" && typeof newTokens[i - 1] === "string") {
+      if (insertTokens.length === 1)
+        beforeCaretText = newTokens[i - 1] + beforeCaretText;
+      (newTokens[i - 1] as string) += newTokens[i];
+      newTokens.splice(i, 1);
+      i--;
+    }
+    let tokenIndex = i + insertTokens.length - 1;
+    if (!newTokens[i]) {
+      newTokens.splice(i, 1);
+      tokenIndex--;
+    }
+    setTokens(newTokens);
 
-      const suggestions = [];
-      for (const list of lists) {
-        const trigger = list.trigger ?? defaultTrigger;
-        const matches = [];
+    const suggestions = [];
+    for (const list of lists) {
+      const trigger = list.trigger ?? defaultTrigger;
+      const matches = [];
+      for (j = 0; j < beforeCaretText.length; j++)
+        matches.push(beforeCaretText.substring(j).match(trigger));
+      for (const key of list.items)
         for (j = 0; j < beforeCaretText.length; j++)
-          matches.push(beforeCaretText.substring(j).match(trigger));
-        for (const key of list.items)
-          for (j = 0; j < beforeCaretText.length; j++)
-            if (matches[j]) {
-              const value = data[key].displayText;
-              if (caseSensitive) {
-                if (value.startsWith(matches[j]![1])) {
-                  suggestions.push({ key, startPos: j });
-                  break;
-                }
-              } else if (value.toLowerCase().startsWith(matches[j]![1].toLowerCase())) {
+          if (matches[j]) {
+            const value = data[key].displayText;
+            if (caseSensitive) {
+              if (value.startsWith(matches[j]![1])) {
                 suggestions.push({ key, startPos: j });
                 break;
               }
+            } else if (value.toLowerCase().startsWith(matches[j]![1].toLowerCase())) {
+              suggestions.push({ key, startPos: j });
+              break;
             }
-      }
-      setSuggestions(suggestions);
-      setHoveredSuggestion(0);
-      mouseDownOnSuggestion.current = false;
+          }
+    }
+    setSuggestions(suggestions);
+    setHoveredSuggestion(0);
+    mouseDownOnSuggestion.current = false;
 
-      caretPos.current = start + length;
-      insertTokenPos.caretPos = beforeCaretText.length;
+    caretPos.current = start + length;
+    insertTokenPos.current = { tokenIndex, caretPos: beforeCaretText.length };
+  }, [tokens, setTokens, data, lists, caseSensitive, setSuggestions, setHoveredSuggestion]);
+
+  const beforeInputCallback = useCallback((event: Event) => {
+    event.preventDefault?.();
+    const e = event as InputEvent;
+    const target = e.target as HTMLTextAreaElement | HTMLInputElement;
+    if (e.inputType === "deleteByDrag" || e.inputType === "insertFromDrop")
+      return; // I have no idea to get the insertion position
+    let start = target.selectionStart!;
+    let end = target.selectionEnd!;
+    let text;
+    if (e.data === null) {
+      text = "";
+      if (start === end)
+        if (e.inputType === "deleteContentBackward")
+          start--;
+        else if (e.inputType === "deleteContentForward")
+          end++;
+    } else
+      text = e.data;
+    let total = 0, i = -1, j, head = "", tail = "";
+    for (j = 0; j < tokens.length; j++) {
+      const token = tokens[j];
+      let length;
+      if (typeof token === "string")
+        length = token.length;
+      else
+        length = (data[token.key]?.displayText ?? missingDataText).length;
+      if (i === -1 && total + length > start) {
+        i = j;
+        head = target.value.substring(total, start);
+      }
+      if (total >= end) {
+        tail = target.value.substring(end, total);
+        break;
+      }
+      total += length;
+    }
+    if (j === tokens.length)
+      tail = target.value.substring(end);
+    if (i === -1)
+      i = tokens.length;
+    updateTokensAndSuggestions(head, [text], text.length, tail, start, i, j);
+  }, [tokens, data, missingDataText, updateTokensAndSuggestions]);
+
+  useEffect(() => {
+    const element = ref.current;
+    element?.addEventListener("beforeinput", beforeInputCallback);
+    return () => {
+      element?.removeEventListener("beforeinput", beforeInputCallback);
     };
-    const beforeInputCallback = (event: Event) => {
-      const e = event as InputEvent;
-      if (e.inputType === "deleteByDrag" || e.inputType === "insertFromDrop")
-        return; // I have no idea to get the insertion position
-      let start = target.selectionStart!;
-      let end = target.selectionEnd!;
+  }, [beforeInputCallback]);
+  
+  const handleCopy = useCallback((event: ClipboardEvent) => {
+    event.preventDefault();
+    const target = event.target as HTMLTextAreaElement | HTMLInputElement;
+    const start = target.selectionStart!;
+    const end = target.selectionEnd!;
+    if (start === end)
+      return;
+    const result = [];
+    let length = 0;
+    let total = 0;
+    for (const token of tokens) {
       let text;
-      if (e.data === null) {
-        text = "";
-        if (start === end)
-          if (e.inputType === "deleteContentBackward")
-            start--;
-          else if (e.inputType === "deleteContentForward")
-            end++;
+      if (typeof token === "string")
+        text = token;
+      else
+        text = data[token.key]?.displayText ?? missingDataText;
+      const tokenTextLength = text.length;
+      if (total < start) {
+        if (total + tokenTextLength > start) {
+          text = text.substring(start - total, Math.min(tokenTextLength, end - total));
+          result.push(text);
+          length += text.length;
+        }
+      } else if (total < end) {
+        if (total + tokenTextLength <= end) {
+          if (typeof token === "string" && typeof result[result.length - 1] === "string")
+            result[result.length - 1] += token;
+          else
+            result.push(token);
+          length += text.length;
+        } else {
+          text = text.substring(0, end - total);
+          if (typeof result[result.length - 1] === "string")
+            result[result.length - 1] += text;
+          else
+            result.push(text);
+          length += text.length;
+        }
       } else
-        text = e.data;
+        break;
+      total += tokenTextLength;
+    }
+    event.clipboardData!.setData("application/json", JSON.stringify({ tokens: result, length } as PasteData));
+  }, [tokens, data, missingDataText]);
+  
+  const handleCut = useCallback((event: ClipboardEvent) => {
+    (onCut as ClipboardEventHandler)?.(event);
+    handleCopy(event);
+    beforeInputCallback({ data: "", target: event.target } as InputEvent);
+  }, [handleCopy, beforeInputCallback]);
+  
+  const handlePaste = useCallback((event: ClipboardEvent) => {
+    (onPaste as ClipboardEventHandler)?.(event);
+    const pasteDataStr = event.clipboardData!.getData("application/json");
+    if (!pasteDataStr)
+      return;
+    let pasteData: PasteData;
+    try {
+      pasteData = JSON.parse(pasteDataStr);
+      if (!pasteData.tokens || !pasteData.length)
+        return;
+      event.preventDefault();
+      const target = event.target as HTMLTextAreaElement | HTMLInputElement;
+      const start = target.selectionStart!;
+      const end = target.selectionEnd!;
       let total = 0, i = -1, j, head = "", tail = "";
       for (j = 0; j < tokens.length; j++) {
         const token = tokens[j];
@@ -250,111 +350,12 @@ export default function TokenizedInput<SuggestionPropsType = unknown>({
         tail = target.value.substring(end);
       if (i === -1)
         i = tokens.length;
-      updateTokensAndSuggestions(head, [text], text.length, tail, start, i, j);
-    };
-    const copyCallback = (event: Event) => {
-      event.preventDefault();
-      const start = target.selectionStart!;
-      const end = target.selectionEnd!;
-      if (start === end)
-        return;
-      const result = [];
-      let length = 0;
-      let total = 0;
-      for (const token of tokens) {
-        let text;
-        if (typeof token === "string")
-          text = token;
-        else
-          text = data[token.key]?.displayText ?? missingDataText;
-        const tokenTextLength = text.length;
-        if (total < start) {
-          if (total + tokenTextLength > start) {
-            text = text.substring(start - total, Math.min(tokenTextLength, end - total));
-            result.push(text);
-            length += text.length;
-          }
-        } else if (total < end) {
-          if (total + tokenTextLength <= end) {
-            if (typeof token === "string" && typeof result[result.length - 1] === "string")
-              result[result.length - 1] += token;
-            else
-              result.push(token);
-            length += text.length;
-          } else {
-            text = text.substring(0, end - total);
-            if (typeof result[result.length - 1] === "string")
-              result[result.length - 1] += text;
-            else
-              result.push(text);
-            length += text.length;
-          }
-        } else
-          break;
-        total += tokenTextLength;
-      }
-      (event as ClipboardEvent).clipboardData!.setData("application/json", JSON.stringify({ tokens: result, length } as PasteData));
-    };
-    const cutCallback = (event: Event) => {
-      copyCallback(event);
-      beforeInputCallback({ data: "" } as InputEvent);
-    };
-    const pasteCallback = (event: Event) => {
-      const pasteDataStr = (event as ClipboardEvent).clipboardData!.getData("application/json");
-      if (!pasteDataStr)
-        return;
-      let pasteData: PasteData;
-      try {
-        pasteData = JSON.parse(pasteDataStr);
-        if (!pasteData.tokens || !pasteData.length)
-          return;
-        event.preventDefault();
-        const start = target.selectionStart!;
-        const end = target.selectionEnd!;
-        let total = 0, i = -1, j, head = "", tail = "";
-        for (j = 0; j < tokens.length; j++) {
-          const token = tokens[j];
-          let length;
-          if (typeof token === "string")
-            length = token.length;
-          else
-            length = (data[token.key]?.displayText ?? missingDataText).length;
-          if (i === -1 && total + length > start) {
-            i = j;
-            head = target.value.substring(total, start);
-          }
-          if (total >= end) {
-            tail = target.value.substring(end, total);
-            break;
-          }
-          total += length;
-        }
-        if (j === tokens.length)
-          tail = target.value.substring(end);
-        if (i === -1)
-          i = tokens.length;
-        updateTokensAndSuggestions(head, pasteData.tokens, pasteData.length, tail, start, i, j);
-      } catch {}
-    };
-    target.addEventListener("beforeinput", beforeInputCallback);
-    target.addEventListener("copy", copyCallback);
-    target.addEventListener("cut", cutCallback);
-    target.addEventListener("paste", pasteCallback);
-    if (caretPos.current !== -1) {
-      const pos = caretPos.current;
-      setTimeout(() => target.setSelectionRange(pos, pos));
-      caretPos.current = -1;
-    }
-    return () => {
-      target.removeEventListener("beforeinput", beforeInputCallback);
-      target.removeEventListener("copy", copyCallback);
-      target.removeEventListener("cut", cutCallback);
-      target.removeEventListener("paste", pasteCallback);
-    };
-  }, [tokens, setTokens, data, missingDataText, lists, caseSensitive, setSuggestions, setHoveredSuggestion, insertTokenPos]);
+      updateTokensAndSuggestions(head, pasteData.tokens, pasteData.length, tail, start, i, j);
+    } catch {}
+  }, [tokens, data, missingDataText, updateTokensAndSuggestions]);
 
   const applySuggestion = useCallback((suggestion: Suggestion) => {
-    const { tokenIndex, caretPos: cp } = insertTokenPos;
+    const { tokenIndex, caretPos: cp } = insertTokenPos.current;
     setTokens(currentTokens => {
       const newTokens = [...currentTokens];
       const text = currentTokens[tokenIndex] as string;
@@ -371,7 +372,7 @@ export default function TokenizedInput<SuggestionPropsType = unknown>({
     caretPos.current = ref.current!.selectionStart! - cp + suggestion.startPos + displayText.length;
     setSuggestions([]);
     mouseDownOnSuggestion.current = false;
-  }, [setTokens, insertTokenPos, data, missingDataText]);
+  }, [setTokens, data, missingDataText, setSuggestions]);
 
   const displayRef = useRef<HTMLDivElement>(null);
   const suggestionListRef = useRef<Element>(null);
@@ -500,6 +501,14 @@ export default function TokenizedInput<SuggestionPropsType = unknown>({
     }
   }, [borderWidth]);
 
+  const Component = useCallback(
+    (props: (TextareaHTMLAttributes<HTMLTextAreaElement> | InputHTMLAttributes<HTMLInputElement>) & { ref: Ref<HTMLTextAreaElement | HTMLInputElement> }
+  ) =>
+    multiline ?
+      <textarea {...props as TextareaHTMLAttributes<HTMLTextAreaElement>} /> :
+      <input {...props as InputHTMLAttributes<HTMLInputElement>} />
+  , [multiline]);
+
   const needAppendSpace = useMemo(() => {
     if (!tokens.length)
       return false;
@@ -517,59 +526,50 @@ export default function TokenizedInput<SuggestionPropsType = unknown>({
     [tokens, data, missingDataText]
   );
 
+  useEffect(() => {
+    if (ref.current) {
+      onChange?.({ target: ref.current } as (ChangeEvent<HTMLTextAreaElement> & ChangeEvent<HTMLInputElement>));
+      if (caretPos.current !== -1) {
+        const pos = caretPos.current;
+        ref.current.setSelectionRange(pos, pos);
+        caretPos.current = -1;
+      }
+    }
+  }, [value]);
+
   return (
     <div style={{ position, left, top, right, bottom, inset, display: display || "inline-block", width, height }}>
       <div style={{ position: "relative" }}>
-        {multiline ?
-          <textarea
-            {...props as TextareaHTMLAttributes<HTMLTextAreaElement>}
-            ref={ref as RefObject<HTMLTextAreaElement>}
-            value={value}
-            onKeyDown={handleKeyDown}
-            onScroll={handleScroll}
-            onClick={handleClick}
-            onBlur={handleBlur}
-            style={{
-              fontFamily: "inherit",
-              fontSize: "inherit",
-              fontStretch: "inherit",
-              fontStyle: "inherit",
-              fontVariant: "inherit",
-              fontWeight: "inherit",
-              display: "block",
-              boxSizing: "border-box",
-              color: "transparent",
-              caretColor: displayColor,
-              width,
-              height,
-              ...otherStyle
-            }}
-          /> :
-          <input
-            {...props as InputHTMLAttributes<HTMLInputElement>}
-            ref={ref as RefObject<HTMLInputElement>}
-            value={value}
-            onKeyDown={handleKeyDown}
-            onScroll={handleScroll}
-            onClick={handleClick}
-            onBlur={handleBlur}
-            style={{
-              fontFamily: "inherit",
-              fontSize: "inherit",
-              fontStretch: "inherit",
-              fontStyle: "inherit",
-              fontVariant: "inherit",
-              fontWeight: "inherit",
-              display: "block",
-              boxSizing: "border-box",
-              color: "transparent",
-              caretColor: displayColor,
-              width,
-              height,
-              ...otherStyle
-            }}
-          />
-        }
+        <Component
+          {...props}
+          ref={ref}
+          value={value}
+          onCopy={(e: ClipboardEvent) => {
+            (onCopy as ClipboardEventHandler)?.(e);
+            handleCopy(e);
+          }}
+          onCut={handleCut}
+          onPaste={handlePaste}
+          onKeyDown={handleKeyDown}
+          onScroll={handleScroll}
+          onClick={handleClick}
+          onBlur={handleBlur}
+          style={{
+            fontFamily: "inherit",
+            fontSize: "inherit",
+            fontStretch: "inherit",
+            fontStyle: "inherit",
+            fontVariant: "inherit",
+            fontWeight: "inherit",
+            display: "block",
+            boxSizing: "border-box",
+            color: "transparent",
+            caretColor: displayColor,
+            width,
+            height,
+            ...otherStyle
+          }}
+        />
         <div
           ref={displayRef}
           className={props.className}
@@ -609,12 +609,12 @@ export default function TokenizedInput<SuggestionPropsType = unknown>({
         >
           {tokens.map((token, i) => {
             if (typeof token === "string") {
-              if (i === insertTokenPos.tokenIndex)
+              if (i === insertTokenPos.current.tokenIndex)
                 return (
                   <span key={i}>
-                    {token.substring(0, insertTokenPos.caretPos)}
+                    {token.substring(0, insertTokenPos.current.caretPos)}
                     <span ref={ref => setCaretSpan(ref)} />
-                    {token.substring(insertTokenPos.caretPos)}
+                    {token.substring(insertTokenPos.current.caretPos)}
                   </span>
                 );
               return <span key={i}>{token}</span>;

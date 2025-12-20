@@ -5,7 +5,8 @@
   "compilerOptions": {
     "strict": true,
     "declaration": true,
-    "moduleResolution": "node",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
     "jsx": "react-jsx",
     "target": "ESNext",
     "outDir": "dist"
