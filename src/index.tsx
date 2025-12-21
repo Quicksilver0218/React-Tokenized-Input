@@ -453,11 +453,11 @@ export default function TokenizedInput<SuggestionPropsType = unknown>({
   callback();
 
   useEffect(() => {
-    window.addEventListener("resize", callback);
-    window.addEventListener("scroll", callback);
+    window.addEventListener("resize", callback, true);
+    window.addEventListener("scroll", callback, true);
     return () => {
-      window.removeEventListener("resize", callback);
-      window.removeEventListener("scroll", callback);
+      window.removeEventListener("resize", callback, true);
+      window.removeEventListener("scroll", callback, true);
     };
   }, [callback]);
 
