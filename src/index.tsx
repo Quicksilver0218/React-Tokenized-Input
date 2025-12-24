@@ -544,6 +544,7 @@ export default function TokenizedInput<SuggestionPropsType = unknown>({
           {...props}
           ref={ref}
           value={value}
+          onChange={() => {}}
           onCopy={(e: ClipboardEvent) => {
             (onCopy as ClipboardEventHandler)?.(e);
             handleCopy(e);
