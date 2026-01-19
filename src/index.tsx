@@ -262,7 +262,7 @@ export default function TokenizedInput<SuggestionPropsType = unknown>({
       element?.removeEventListener("beforeinput", beforeInputCallback);
     };
   }, [beforeInputCallback]);
-  
+
   const handleCopy = useCallback((event: ClipboardEvent) => {
     event.preventDefault();
     const target = event.target as HTMLTextAreaElement | HTMLInputElement;
@@ -307,13 +307,13 @@ export default function TokenizedInput<SuggestionPropsType = unknown>({
     }
     event.clipboardData!.setData("application/json", JSON.stringify({ tokens: result, length } as PasteData));
   }, [tokens, data, missingDataText]);
-  
+
   const handleCut = useCallback((event: ClipboardEvent) => {
     (onCut as ClipboardEventHandler)?.(event);
     handleCopy(event);
     beforeInputCallback({ data: "", target: event.target } as InputEvent);
-  }, [handleCopy, beforeInputCallback]);
-  
+  }, [onCut, handleCopy, beforeInputCallback]);
+
   const handlePaste = useCallback((event: ClipboardEvent) => {
     (onPaste as ClipboardEventHandler)?.(event);
     const pasteDataStr = event.clipboardData!.getData("application/json");
@@ -352,12 +352,12 @@ export default function TokenizedInput<SuggestionPropsType = unknown>({
         i = tokens.length;
       updateTokensAndSuggestions(head, pasteData.tokens, pasteData.length, tail, start, i, j);
     } catch {}
-  }, [tokens, data, missingDataText, updateTokensAndSuggestions]);
+  }, [onPaste, tokens, data, missingDataText, updateTokensAndSuggestions]);
 
   const applySuggestion = useCallback((suggestion: Suggestion) => {
     const { tokenIndex, caretPos: cp } = insertTokenPos.current;
     setTokens(currentTokens => {
-      const newTokens = [...currentTokens];
+      const newTokens = currentTokens.concat();
       const text = currentTokens[tokenIndex] as string;
       newTokens[tokenIndex] = text.substring(cp);
       if (!newTokens[tokenIndex])
@@ -501,13 +501,14 @@ export default function TokenizedInput<SuggestionPropsType = unknown>({
     }
   }, [borderWidth]);
 
-  const Component = useCallback(
-    (props: (TextareaHTMLAttributes<HTMLTextAreaElement> | InputHTMLAttributes<HTMLInputElement>) & { ref: Ref<HTMLTextAreaElement | HTMLInputElement> }
+  const Component = useCallback((
+    props: (TextareaHTMLAttributes<HTMLTextAreaElement> | InputHTMLAttributes<HTMLInputElement>) & { ref: Ref<HTMLTextAreaElement | HTMLInputElement> }
   ) =>
     multiline ?
       <textarea {...props as TextareaHTMLAttributes<HTMLTextAreaElement>} /> :
-      <input {...props as InputHTMLAttributes<HTMLInputElement>} />
-  , [multiline]);
+      <input {...props as InputHTMLAttributes<HTMLInputElement>} />,
+    [multiline]
+  );
 
   const needAppendSpace = useMemo(() => {
     if (!tokens.length)
@@ -535,7 +536,7 @@ export default function TokenizedInput<SuggestionPropsType = unknown>({
         caretPos.current = -1;
       }
     }
-  }, [value]);
+  }, [onChange, value]);
 
   return (
     <div style={{ position, left, top, right, bottom, inset, display: display || "inline-block", width, height }}>

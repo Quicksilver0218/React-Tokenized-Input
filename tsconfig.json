@@ -9,6 +9,7 @@
     "moduleResolution": "nodenext",
     "jsx": "react-jsx",
     "target": "ESNext",
+    "rootDir": "./src",
     "outDir": "dist"
   }
 }
