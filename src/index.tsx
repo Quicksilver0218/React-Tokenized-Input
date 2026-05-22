@@ -28,7 +28,7 @@ import {
   ChangeEvent
 } from "react";
 
-export interface TokenWithKey { key: string }
+export type TokenWithKey = { key: string };
 
 export type Token = string | TokenWithKey;
 
@@ -94,7 +94,7 @@ function scrollToChild(parent: Element, child: HTMLElement) {
 export type TokenizedInputProps<T = unknown> = (TextareaHTMLAttributes<HTMLTextAreaElement> | InputHTMLAttributes<HTMLInputElement>) & {
   tokens: Token[];
   setTokens: Dispatch<SetStateAction<Token[]>>;
-  data: { [key: string]: TokenData<T> };
+  data: Record<string, TokenData<T>>;
   lists: {
     trigger?: RegExp;
     items: string[];
@@ -131,7 +131,7 @@ export default function TokenizedInput<SuggestionPropsType = unknown>({
   onChange,
   ...props
 }: TokenizedInputProps<SuggestionPropsType>) {
-  const ref = useRef<HTMLTextAreaElement | HTMLInputElement>(null);
+  const [textField, setTextField] = useState<HTMLTextAreaElement | HTMLInputElement | null>(null);
 
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const caretPos = useRef(-1);
@@ -256,12 +256,13 @@ export default function TokenizedInput<SuggestionPropsType = unknown>({
   }, [tokens, data, missingDataText, updateTokensAndSuggestions]);
 
   useEffect(() => {
-    const element = ref.current;
-    element?.addEventListener("beforeinput", beforeInputCallback);
-    return () => {
-      element?.removeEventListener("beforeinput", beforeInputCallback);
-    };
-  }, [beforeInputCallback]);
+    if (textField) {
+      textField.addEventListener("beforeinput", beforeInputCallback);
+      return () => {
+        textField.removeEventListener("beforeinput", beforeInputCallback);
+      };
+    }
+  }, [textField, beforeInputCallback]);
 
   const handleCopy = useCallback((event: ClipboardEvent) => {
     event.preventDefault();
@@ -351,7 +352,7 @@ export default function TokenizedInput<SuggestionPropsType = unknown>({
       if (i === -1)
         i = tokens.length;
       updateTokensAndSuggestions(head, pasteData.tokens, pasteData.length, tail, start, i, j);
-    } catch {}
+    } catch { }
   }, [onPaste, tokens, data, missingDataText, updateTokensAndSuggestions]);
 
   const applySuggestion = useCallback((suggestion: Suggestion) => {
@@ -367,12 +368,12 @@ export default function TokenizedInput<SuggestionPropsType = unknown>({
         newTokens.splice(tokenIndex, 0, text.substring(0, suggestion.startPos));
       return newTokens;
     });
-    ref.current!.focus();
+    textField!.focus();
     const displayText = data[suggestion.key]?.displayText || missingDataText;
-    caretPos.current = ref.current!.selectionStart! - cp + suggestion.startPos + displayText.length;
+    caretPos.current = textField!.selectionStart! - cp + suggestion.startPos + displayText.length;
     setSuggestions([]);
     mouseDownOnSuggestion.current = false;
-  }, [setTokens, data, missingDataText, setSuggestions]);
+  }, [setTokens, textField, data, missingDataText, setSuggestions]);
 
   const displayRef = useRef<HTMLDivElement>(null);
   const suggestionListRef = useRef<Element>(null);
@@ -474,32 +475,35 @@ export default function TokenizedInput<SuggestionPropsType = unknown>({
     letterSpacing,
     lineHeight,
     overflowWrap,
-    padding,
+    paddingLeft,
+    paddingTop,
+    paddingRight,
+    paddingBottom,
     textAlign,
     textDecoration,
     textIndent,
     textTransform,
     whiteSpace,
     wordSpacing
-  } = (ref.current ? getComputedStyle(ref.current) : {}) as CSSProperties;
+  } = useMemo(() => (textField ? getComputedStyle(textField) : {}) as CSSProperties, [textField]);
 
   const displayColor = displayRef.current ? getComputedStyle(displayRef.current).color as Globals | DataType.Color | "auto" : undefined;
 
   const { position, left, top, right, bottom, inset, display, width, height, color, ...otherStyle } = useMemo(() => style || {}, [style]);
 
   useEffect(() => {
-    if (ref.current) {
+    if (textField) {
       const ro = new ResizeObserver(() => {
         const style = displayRef.current?.style;
         if (style) {
-          style.width = `calc(${ref.current?.clientWidth || 0}px + ${borderWidth} * 2)`;
-          style.height = `calc(${ref.current?.clientHeight || 0}px + ${borderWidth} * 2)`;
+          style.width = `calc(${textField.clientWidth || 0}px + ${borderWidth} * 2)`;
+          style.height = `calc(${textField.clientHeight || 0}px + ${borderWidth} * 2)`;
         }
       });
-      ro.observe(ref.current!);
+      ro.observe(textField);
       return () => ro.disconnect();
     }
-  }, [borderWidth]);
+  }, [textField, borderWidth]);
 
   const Component = useCallback((
     props: (TextareaHTMLAttributes<HTMLTextAreaElement> | InputHTMLAttributes<HTMLInputElement>) & { ref: Ref<HTMLTextAreaElement | HTMLInputElement> }
@@ -528,24 +532,24 @@ export default function TokenizedInput<SuggestionPropsType = unknown>({
   );
 
   useEffect(() => {
-    if (ref.current) {
-      onChange?.({ target: ref.current } as (ChangeEvent<HTMLTextAreaElement> & ChangeEvent<HTMLInputElement>));
+    if (textField) {
+      onChange?.({ target: textField } as (ChangeEvent<HTMLTextAreaElement> & ChangeEvent<HTMLInputElement>));
       if (caretPos.current !== -1) {
         const pos = caretPos.current;
-        ref.current.setSelectionRange(pos, pos);
+        textField.setSelectionRange(pos, pos);
         caretPos.current = -1;
       }
     }
-  }, [onChange, value]);
+  }, [textField, onChange, value]);
 
   return (
     <div style={{ position, left, top, right, bottom, inset, display: display || "inline-block", width, height }}>
       <div style={{ position: "relative" }}>
         <Component
           {...props}
-          ref={ref}
+          ref={ref => setTextField(ref)}
           value={value}
-          onChange={() => {}}
+          onChange={() => { }}
           onCopy={(e: ClipboardEvent) => {
             (onCopy as ClipboardEventHandler)?.(e);
             handleCopy(e);
@@ -588,7 +592,10 @@ export default function TokenizedInput<SuggestionPropsType = unknown>({
             letterSpacing,
             lineHeight,
             overflowWrap,
-            padding,
+            paddingLeft,
+            paddingTop,
+            paddingRight,
+            paddingBottom,
             textAlign,
             textDecoration,
             textIndent,
@@ -599,8 +606,8 @@ export default function TokenizedInput<SuggestionPropsType = unknown>({
             color,
             pointerEvents: "none",
             position: "absolute",
-            width: `calc(${ref.current?.clientWidth || 0}px + ${borderWidth} * 2)`,
-            height: `calc(${ref.current?.clientHeight || 0}px + ${borderWidth} * 2)`,
+            width: `calc(${textField?.clientWidth || 0}px + ${borderWidth} * 2)`,
+            height: `calc(${textField?.clientHeight || 0}px + ${borderWidth} * 2)`,
             inset: 0,
             borderStyle: "solid",
             borderColor: "transparent",
